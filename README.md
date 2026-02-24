@@ -1,5 +1,4 @@
-# MPLS QoS Path Computation – MSc Thesis
-
+# Protokoły wyznaczania ścieżek MPLS z gwarancją QoS – praca magisterska
 Projekt pracy magisterskiej:
 Protokoły wyznaczania ścieżek MPLS z gwarancją QoS.
 
