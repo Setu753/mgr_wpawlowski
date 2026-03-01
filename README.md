@@ -49,8 +49,7 @@ Celem pracy jest porównanie algorytmów wyznaczania ścieżek w sieciach MPLS z
 ---
 
 ## Aktualny etap
-
-Faza implementacyjna zakończona.  
+  
 Trwa analiza parametryczna (wpływ β) oraz dalsza walidacja eksperymentalna.
 
 ---
