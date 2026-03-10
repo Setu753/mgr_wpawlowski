@@ -49,8 +49,7 @@ Celem pracy jest porównanie algorytmów wyznaczania ścieżek w sieciach MPLS z
 ---
 
 ## Aktualny etap
-
-Faza implementacyjna zakończona.  
+  
 Trwa analiza parametryczna (wpływ β) oraz dalsza walidacja eksperymentalna.
 
 ---
@@ -60,4 +59,4 @@ Trwa analiza parametryczna (wpływ β) oraz dalsza walidacja eksperymentalna.
 ```bash
 pip install -r requirements.txt
 python main.py
->>>>>>> 43f922b (Poprawa metodologii eksperymentu + analiza skalowania + testowa wersja Weighted TE)
+
