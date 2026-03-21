@@ -60,7 +60,24 @@ class Network:
             self.graph[u][v]["load"] += bandwidth
 
         return True
+    
+    def path_delay(self, path):
+        return sum(
+            self.graph[u][v]["delay"]
+            for u, v in zip(path[:-1], path[1:])
+        )
 
+    def utilization(self):
+        utils = [
+            data["load"] / data["bandwidth"]
+            for _, _, data in self.graph.edges(data=True)
+            if data["bandwidth"] > 0
+        ]
+
+        return {
+            "avg": sum(utils) / len(utils) if utils else 0,
+            "max": max(utils) if utils else 0,
+        }
 class Flow:
     def __init__(self, src, dst, bandwidth, max_delay, priority=1):
         self.src = src
@@ -68,3 +85,4 @@ class Flow:
         self.bandwidth = bandwidth
         self.max_delay = max_delay
         self.priority = priority
+    

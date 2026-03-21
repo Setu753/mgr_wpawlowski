@@ -63,7 +63,7 @@ class WeightedGreedy:
             bandwidth = data["bandwidth"]
             load = data["load"]
 
-            utilization = load / bandwidth
+            utilization = load / bandwidth if bandwidth > 0 else 0
 
             weight = delay * (1 + self.beta * utilization)
 
