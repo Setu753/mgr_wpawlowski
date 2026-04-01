@@ -6,10 +6,10 @@ class Network:
     def __init__(self):
         self.graph = nx.Graph()
 
-    def generate_random(self, nodes=8, link_probability=0.4,rng=None, ensure_connectivity=True):
-        rng =rng or random
+    def generate_random(self, nodes=8, link_probability=0.4, rng=None, ensure_connectivity=True):
+        rng = rng or random
         self.graph.clear()
-        
+
         for i in range(nodes):
             self.graph.add_node(i)
 
@@ -23,8 +23,8 @@ class Network:
                         delay=rng.uniform(1, 10),
                         load=0
                     )
-        # Gwarantujemy spójność topologii bazowej, aby wyniki nie były zaniżane
-        # przez przypadkowe rozspójnienie grafu.
+
+        # zapewnienie spójności
         if ensure_connectivity and nodes > 1:
             components = list(nx.connected_components(self.graph))
             if len(components) > 1:
@@ -39,10 +39,9 @@ class Network:
                         load=0
                     )
 
-
     def get_graph(self):
         return self.graph
-    
+
     def reserve_bandwidth(self, path, bandwidth):
         for i in range(len(path) - 1):
             u = path[i]
@@ -53,14 +52,13 @@ class Network:
             if link["bandwidth"] - link["load"] < bandwidth:
                 return False
 
-    # Rezerwujemy przepustowość
         for i in range(len(path) - 1):
             u = path[i]
             v = path[i + 1]
             self.graph[u][v]["load"] += bandwidth
 
         return True
-    
+
     def path_delay(self, path):
         return sum(
             self.graph[u][v]["delay"]
@@ -78,6 +76,26 @@ class Network:
             "avg": sum(utils) / len(utils) if utils else 0,
             "max": max(utils) if utils else 0,
         }
+
+    # 🔥 DODAJ TO (jeśli jeszcze nie masz)
+    def save_topology(self, filename="topology.png"):
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(8, 6))
+        pos = nx.spring_layout(self.graph, seed=42)
+
+        edge_labels = {
+            (u, v): f"{int(data['load'])}/{data['bandwidth']}"
+            for u, v, data in self.graph.edges(data=True)
+        }
+
+        nx.draw(self.graph, pos, with_labels=True)
+        nx.draw_networkx_edge_labels(self.graph, pos, edge_labels=edge_labels)
+
+        plt.savefig(filename)
+        plt.close()
+
+
 class Flow:
     def __init__(self, src, dst, bandwidth, max_delay, priority=1):
         self.src = src
@@ -85,4 +103,3 @@ class Flow:
         self.bandwidth = bandwidth
         self.max_delay = max_delay
         self.priority = priority
-    

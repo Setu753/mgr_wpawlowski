@@ -1,68 +1,76 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import time
 
 
-plt.rcParams.update({
-    "font.size": 11,
-    "figure.figsize": (7, 4.5),
-    "axes.grid": True
-})
+def find_latest_run():
+    runs = [d for d in os.listdir() if d.startswith("run_")]
+    runs.sort(reverse=True)
+    return runs[0] if runs else None
 
-output_dir = os.path.join("plots", f"run_{int(time.time())}")
+
+run_dir = find_latest_run()
+
+if not run_dir:
+    print("Brak folderu run_*")
+    exit()
+
+csv_path = os.path.join(run_dir, "results.csv")
+output_dir = os.path.join(run_dir, "plots_final")
 os.makedirs(output_dir, exist_ok=True)
 
-# WCZYTANIE DANYCH
-df = pd.read_csv("results_summary.csv")
+df = pd.read_csv(csv_path)
 
-print("\n=== TABELA WYNIKÓW ===")
-print(df.round(3))
+print("\n=== DANE ===")
+print(df.head())
 
+# ===== WYKRES 1: ŚREDNIA AKCEPTACJA =====
+grouped = df.groupby("n_flows").mean(numeric_only=True)
 
-# WYKRES 1: AKCEPTACJA
 plt.figure()
-plt.plot(df["n_flows"], df["ip_acceptance_mean"], marker="o", label="IP")
-plt.plot(df["n_flows"], df["cspf_acceptance_mean"], marker="s", label="CSPF")
-plt.plot(df["n_flows"], df["weighted_acceptance_mean"], marker="^", label="Weighted")
+plt.plot(grouped.index, grouped["ip_acceptance"], marker="o", label="IP")
+plt.plot(grouped.index, grouped["cspf_acceptance"], marker="s", label="CSPF")
+plt.plot(grouped.index, grouped["weighted_acceptance"], marker="^", label="Weighted")
 
-plt.xlabel("Liczba przepływów")
-plt.ylabel("Współczynnik akceptacji")
-plt.title("Współczynnik akceptacji w funkcji obciążenia")
-plt.legend(title="Algorytm")
-plt.tight_layout()
+plt.xlabel("Liczba flow")
+plt.ylabel("Acceptance")
+plt.title("Acceptance vs obciążenie")
+plt.legend()
+plt.grid()
 
-plt.savefig(os.path.join(output_dir, "acceptance.png"), dpi=300)
-plt.show()
+plt.savefig(os.path.join(output_dir, "acceptance_vs_flows.png"))
+plt.close()
 
 
-# WYKRES 2: MAKSYMALNE WYKORZYSTANIE ŁĄCZA
+# ===== WYKRES 2: PORÓWNANIE ALGORYTMÓW =====
 plt.figure()
-plt.plot(df["n_flows"], df["ip_max_util_mean"], marker="o", label="IP")
-plt.plot(df["n_flows"], df["cspf_max_util_mean"], marker="s", label="CSPF")
-plt.plot(df["n_flows"], df["weighted_max_util_mean"], marker="^", label="Weighted")
 
-plt.xlabel("Liczba przepływów")
-plt.ylabel("Maksymalne wykorzystanie łącza")
-plt.title("Maksymalne wykorzystanie łącza w funkcji obciążenia")
-plt.legend(title="Algorytm")
-plt.tight_layout()
+labels = ["IP", "CSPF", "Weighted"]
+values = [
+    grouped["ip_acceptance"].mean(),
+    grouped["cspf_acceptance"].mean(),
+    grouped["weighted_acceptance"].mean()
+]
 
-plt.savefig(os.path.join(output_dir, "max_utilization.png"), dpi=300)
-plt.show()
+plt.bar(labels, values)
+
+plt.title("Średnia skuteczność algorytmów")
+plt.ylabel("Acceptance")
+
+plt.savefig(os.path.join(output_dir, "algorithms_comparison.png"))
+plt.close()
 
 
-# WYKRES 3: OPÓŹNIENIE
+# ===== WYKRES 3: BOXPLOT =====
 plt.figure()
-plt.plot(df["n_flows"], df["ip_delay_mean"], marker="o", label="IP")
-plt.plot(df["n_flows"], df["cspf_delay_mean"], marker="s", label="CSPF")
-plt.plot(df["n_flows"], df["weighted_delay_mean"], marker="^", label="Weighted")
 
-plt.xlabel("Liczba przepływów")
-plt.ylabel("Średnie opóźnienie")
-plt.title("Średnie opóźnienie w funkcji obciążenia")
-plt.legend(title="Algorytm")
-plt.tight_layout()
+df.boxplot(column=["ip_acceptance", "cspf_acceptance", "weighted_acceptance"])
 
-plt.savefig(os.path.join(output_dir, "delay.png"), dpi=300)
-plt.show()
+plt.title("Rozkład wyników (boxplot)")
+plt.ylabel("Acceptance")
+
+plt.savefig(os.path.join(output_dir, "boxplot.png"))
+plt.close()
+
+
+print(f"\nWykresy zapisane w: {output_dir}")

@@ -1,15 +1,16 @@
 from network import Flow, Network
 from routing import IPRouting, CSPF, WeightedGreedy
 import random
-import statistics
 import copy
-import csv
 import time
+import os
+import csv
 
 
 def generate_flows(n_flows, n_nodes, rng=None):
     rng = rng or random
     flows = []
+
     for _ in range(n_flows):
         src = rng.randint(0, n_nodes - 1)
         dst = rng.randint(0, n_nodes - 1)
@@ -17,201 +18,211 @@ def generate_flows(n_flows, n_nodes, rng=None):
         while dst == src:
             dst = rng.randint(0, n_nodes - 1)
 
-        bandwidth = rng.randint(5, 40)
-        max_delay = rng.randint(5, 30)
+        bandwidth = rng.randint(1, 10)
+        max_delay = rng.randint(10, 40)
 
         flows.append(Flow(src, dst, bandwidth, max_delay))
 
     return flows
 
 
-def run_experiment(n_nodes=10, n_flows=30, seed=None, beta=3.0):
+def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
+                   topo_prefix=None, current_log_file=None):
+
     rng = random.Random(seed) if seed is not None else random
-
-    base_network = Network()
-    base_network.generate_random(nodes=n_nodes, rng=rng, ensure_connectivity=True)
-    base_graph = base_network.get_graph()
-
     flows = generate_flows(n_flows, n_nodes, rng=rng)
 
-    # ================= IP =================
     net_ip = Network()
     net_ip.graph = copy.deepcopy(base_graph)
-    graph_ip = net_ip.get_graph()
+    ip_router = IPRouting(net_ip.get_graph())
 
-    ip_router = IPRouting(graph_ip)
+    net_cspf = Network()
+    net_cspf.graph = copy.deepcopy(base_graph)
+    cspf_router = CSPF(net_cspf.get_graph())
+
+    net_weighted = Network()
+    net_weighted.graph = copy.deepcopy(base_graph)
+    weighted_router = WeightedGreedy(net_weighted.get_graph(), beta=beta)
 
     accepted_ip = 0
-    total_delay_ip = 0
+    accepted_cspf = 0
+    accepted_weighted = 0
 
-    for flow in flows:
+    for i, flow in enumerate(flows):
+
+        # ===== IP =====
         path = ip_router.shortest_path(flow.src, flow.dst)
+        log_line = f"FLOW {i} IP: "
+
+        if path:
+            log_line += " -> ".join(map(str, path))
+        else:
+            log_line += "NONE"
 
         if path and net_ip.reserve_bandwidth(path, flow.bandwidth):
             accepted_ip += 1
-            total_delay_ip += net_ip.path_delay(path)
+            log_line += " | ACCEPTED"
+        else:
+            log_line += " | REJECTED"
 
-    # ================= CSPF =================
-    net_cspf = Network()
-    net_cspf.graph = copy.deepcopy(base_graph)
-    graph_cspf = net_cspf.get_graph()
+        if current_log_file:
+            with open(current_log_file, "a") as f:
+                f.write(log_line + "\n")
 
-    cspf_router = CSPF(graph_cspf)
-
-    accepted_cspf = 0
-    total_delay_cspf = 0
-
-    for flow in flows:
+        # ===== CSPF =====
         path = cspf_router.compute_path(flow)
+        log_line = f"FLOW {i} CSPF: "
+
+        if path:
+            log_line += " -> ".join(map(str, path))
+        else:
+            log_line += "NONE"
 
         if path and net_cspf.reserve_bandwidth(path, flow.bandwidth):
             accepted_cspf += 1
-            total_delay_cspf += net_cspf.path_delay(path)
+            log_line += " | ACCEPTED"
+        else:
+            log_line += " | REJECTED"
 
-    # ================= WEIGHTED =================
-    net_weighted = Network()
-    net_weighted.graph = copy.deepcopy(base_graph)
-    graph_weighted = net_weighted.get_graph()
+        if current_log_file:
+            with open(current_log_file, "a") as f:
+                f.write(log_line + "\n")
 
-    weighted_router = WeightedGreedy(graph_weighted, beta=beta)
-
-    accepted_weighted = 0
-    total_delay_weighted = 0
-
-    for flow in flows:
+        # ===== WEIGHTED =====
         path = weighted_router.compute_path(flow)
+        log_line = f"FLOW {i} WEIGHTED: "
+
+        if path:
+            log_line += " -> ".join(map(str, path))
+        else:
+            log_line += "NONE"
 
         if path and net_weighted.reserve_bandwidth(path, flow.bandwidth):
             accepted_weighted += 1
-            total_delay_weighted += net_weighted.path_delay(path)
+            log_line += " | ACCEPTED"
+        else:
+            log_line += " | REJECTED"
 
-    # ===== METRYKI =====
-    ip_util = net_ip.utilization()
-    cspf_util = net_cspf.utilization()
-    weighted_util = net_weighted.utilization()
+        if current_log_file:
+            with open(current_log_file, "a") as f:
+                f.write(log_line + "\n")
+
+    # ===== WIZUALIZACJA =====
+    if topo_prefix:
+        net_ip.save_topology(f"{topo_prefix}_ip.png")
+        net_cspf.save_topology(f"{topo_prefix}_cspf.png")
+        net_weighted.save_topology(f"{topo_prefix}_weighted.png")
+
+        import matplotlib.pyplot as plt
+        import networkx as nx
+
+        G = net_weighted.graph
+        pos = nx.spring_layout(G, seed=42)
+
+        edge_colors = [
+            data["load"] / data["bandwidth"]
+            for _, _, data in G.edges(data=True)
+        ]
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        nx.draw(G, pos, with_labels=True, edge_color=edge_colors,
+                edge_cmap=plt.cm.Reds, ax=ax)
+
+        sm = plt.cm.ScalarMappable(cmap=plt.cm.Reds)
+        sm.set_array(edge_colors)
+        fig.colorbar(sm, ax=ax)
+
+        plt.savefig(f"{topo_prefix}_heatmap.png")
+        plt.close()
 
     return {
         "ip_acceptance": accepted_ip / n_flows,
         "cspf_acceptance": accepted_cspf / n_flows,
         "weighted_acceptance": accepted_weighted / n_flows,
-
-        "ip_avg_delay": total_delay_ip / accepted_ip if accepted_ip else 0,
-        "cspf_avg_delay": total_delay_cspf / accepted_cspf if accepted_cspf else 0,
-        "weighted_avg_delay": total_delay_weighted / accepted_weighted if accepted_weighted else 0,
-
-        "ip_avg_util": ip_util["avg"],
-        "ip_max_util": ip_util["max"],
-
-        "cspf_avg_util": cspf_util["avg"],
-        "cspf_max_util": cspf_util["max"],
-
-        "weighted_avg_util": weighted_util["avg"],
-        "weighted_max_util": weighted_util["max"],
-
-        "ip_rejected": n_flows - accepted_ip,
-        "cspf_rejected": n_flows - accepted_cspf,
-        "weighted_rejected": n_flows - accepted_weighted,
     }
 
 
-def run_scaling_experiments(
-    flow_levels=(30, 60, 90),
-    n_runs=30,
-    n_nodes=10,
-    base_seed=int(time.time()),
-    beta=3.0,
-    summary_file="results_summary.csv",
-    runs_csv_path="runs_details.csv",
-):
-    aggregated_rows = []
-    run_rows = []
+def run_scaling_experiments():
 
-    for n_flows in flow_levels:
-        ip_acc, cspf_acc, w_acc = [], [], []
-        ip_del, cspf_del, w_del = [], [], []
-        ip_util, cspf_util, w_util = [], [], []
+    print("\n=== OPIS EKSPERYMENTU ===")
+    print("IP        - najkrótsza ścieżka (ignoruje obciążenie)")
+    print("CSPF      - uwzględnia ograniczenia (pasmo, delay)")
+    print("Weighted  - uwzględnia obciążenie (load balancing)")
+    print("Acceptance = procent zaakceptowanych przepływów\n")
 
-        ip_max_util, cspf_max_util, w_max_util = [], [], []
+    base_dir = f"run_{int(time.time())}"
+    plots_dir = os.path.join(base_dir, "plots")
+    logs_dir = os.path.join(base_dir, "logs")
 
-        for run_idx in range(n_runs):
-            run_seed = base_seed + (n_flows * 1000) + run_idx
+    os.makedirs(plots_dir, exist_ok=True)
+    os.makedirs(logs_dir, exist_ok=True)
+
+    base_network = Network()
+    base_network.generate_random(nodes=15)
+    base_graph = base_network.get_graph()
+
+    results = []
+
+    for n_flows in [30, 60, 90]:
+
+        log_file = os.path.join(logs_dir, f"log_{n_flows}.txt")
+
+        with open(log_file, "w") as f:
+            f.write(f"=== LOG DLA {n_flows} FLOWS ===\n")
+
+        sum_ip, sum_cspf, sum_w = [], [], []
+
+        for run_idx in range(10):
+
+            with open(log_file, "a") as f:
+                f.write(f"\n===== RUN {run_idx} =====\n")
 
             result = run_experiment(
-                n_nodes=n_nodes,
+                base_graph=base_graph,
+                n_nodes=15,
                 n_flows=n_flows,
-                seed=run_seed,
-                beta=beta,
+                seed=run_idx,
+                topo_prefix=os.path.join(plots_dir, f"topo_{n_flows}_{run_idx}"),
+                current_log_file=log_file
             )
 
-            ip_acc.append(result["ip_acceptance"])
-            cspf_acc.append(result["cspf_acceptance"])
-            w_acc.append(result["weighted_acceptance"])
+            print(f"[{n_flows} flows | run {run_idx}] "
+                  f"IP={result['ip_acceptance']:.2f} (najkrótsza) | "
+                  f"CSPF={result['cspf_acceptance']:.2f} (ograniczenia) | "
+                  f"W={result['weighted_acceptance']:.2f} (obciążenie)")
 
-            ip_del.append(result["ip_avg_delay"])
-            cspf_del.append(result["cspf_avg_delay"])
-            w_del.append(result["weighted_avg_delay"])
+            sum_ip.append(result["ip_acceptance"])
+            sum_cspf.append(result["cspf_acceptance"])
+            sum_w.append(result["weighted_acceptance"])
 
-            ip_util.append(result["ip_avg_util"])
-            cspf_util.append(result["cspf_avg_util"])
-            w_util.append(result["weighted_avg_util"])
-
-            ip_max_util.append(result["ip_max_util"])
-            cspf_max_util.append(result["cspf_max_util"])
-            w_max_util.append(result["weighted_max_util"])
-
-            # 🔥 FIX — zapis każdego runa
-            run_rows.append({
+            results.append({
                 "n_flows": n_flows,
-                "run_idx": run_idx,
-                "seed": run_seed,
+                "run": run_idx,
                 **result
             })
 
-        summary = {
-            "n_flows": n_flows,
-            "n_runs": n_runs,
+        print(f"\n=== PODSUMOWANIE dla {n_flows} flow ===")
+        print(f"IP średnio: {sum(sum_ip)/len(sum_ip):.2f}")
+        print(f"CSPF średnio: {sum(sum_cspf)/len(sum_cspf):.2f}")
+        print(f"Weighted średnio: {sum(sum_w)/len(sum_w):.2f}\n")
+        avg_w = sum(sum_w) / len(sum_w)
 
-            "ip_acceptance_mean": statistics.mean(ip_acc),
-            "cspf_acceptance_mean": statistics.mean(cspf_acc),
-            "weighted_acceptance_mean": statistics.mean(w_acc),
+    if avg_w > 0.9:
+        print("Wniosek: Sieć jest lekko obciążona – większość przepływów jest obsługiwana.")
+    elif avg_w > 0.5:
+        print("Wniosek: Sieć jest umiarkowanie obciążona – część przepływów jest odrzucana.")
+    else:
+        print("Wniosek: Sieć jest przeciążona – duża liczba odrzuconych przepływów.")
 
-            "ip_delay_mean": statistics.mean(ip_del),
-            "cspf_delay_mean": statistics.mean(cspf_del),
-            "weighted_delay_mean": statistics.mean(w_del),
+    print("-" * 50)
 
-            "ip_util_mean": statistics.mean(ip_util),
-            "cspf_util_mean": statistics.mean(cspf_util),
-            "weighted_util_mean": statistics.mean(w_util),
+    csv_path = os.path.join(base_dir, "results.csv")
 
-            "ip_max_util_mean": statistics.mean(ip_max_util),
-            "cspf_max_util_mean": statistics.mean(cspf_max_util),
-            "weighted_max_util_mean": statistics.mean(w_max_util),
-        }
-
-        aggregated_rows.append(summary)
-
-        print(f"\n=== {n_flows} flow ===")
-        print("IP:", summary["ip_acceptance_mean"])
-        print("CSPF:", summary["cspf_acceptance_mean"])
-        print("Weighted:", summary["weighted_acceptance_mean"])
-
-    # ===== CSV =====
-    with open(summary_file, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(aggregated_rows[0].keys()))
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=results[0].keys())
         writer.writeheader()
-        writer.writerows(aggregated_rows)
-
-    with open(runs_csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(run_rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(run_rows)
+        writer.writerows(results)
 
 
 if __name__ == "__main__":
-    run_scaling_experiments(
-        flow_levels=(30, 60, 90),
-        n_runs=30,
-        n_nodes=10,
-        base_seed=int(time.time()),
-        beta=3.0
-    )
+    run_scaling_experiments()
