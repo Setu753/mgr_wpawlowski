@@ -168,15 +168,6 @@ python plot_results_scientific.py
 
 ---
 
-## Future Work
-
-* dynamiczny ruch w czasie,
-* RSVP-TE / Segment Routing,
-* analiza stabilności algorytmów,
-* inne modele topologii.
-
----
-
 ## Technologie
 
 * Python 3
