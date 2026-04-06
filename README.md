@@ -1,12 +1,25 @@
 # Protokoły wyznaczania ścieżek MPLS z gwarancją QoS
 
-Projekt do pracy magisterskiej: porównanie algorytmów wyznaczania ścieżek w sieciach MPLS/TE z uwzględnieniem ograniczeń QoS.
+## TL;DR
+
+Symulator MPLS Traffic Engineering porównujący algorytmy routingu
+(IP, CSPF, Weighted) pod kątem QoS.
+
+Wynik: algorytmy uwzględniające ograniczenia i obciążenie osiągają
+wyższy współczynnik akceptacji oraz lepsze rozłożenie ruchu w sieci.
 
 ---
 
-##  Cel
+## Cel
 
-Celem projektu jest porównanie trzech podejść routingowych:
+Celem projektu jest analiza wpływu różnych algorytmów routingu na:
+
+* współczynnik akceptacji przepływów (acceptance ratio),
+* obciążenie sieci,
+* efektywność wykorzystania zasobów,
+* opóźnienia transmisji.
+
+Porównywane podejścia:
 
 * **IP routing** – najkrótsza ścieżka według opóźnienia (baseline),
 * **CSPF (Constraint Shortest Path First)** – uwzględnia ograniczenia pasma i opóźnienia,
@@ -14,117 +27,157 @@ Celem projektu jest porównanie trzech podejść routingowych:
 
 ---
 
-##  Co jest zaimplementowane
+## Model
 
-###  Model sieci
+### Sieć
 
 * losowa topologia (`NetworkX`),
 * atrybuty łączy: `bandwidth`, `delay`, `load`,
-* rezerwacja pasma na całej ścieżce,
-* opcjonalne wymuszenie spójności topologii bazowej.
+* rezerwacja pasma na ścieżce,
+* wymuszenie spójności grafu.
 
-###  Model ruchu
+### Ruch
 
-* generowanie przepływów (`src`, `dst`, `bandwidth`, `max_delay`),
+* przepływy: `(src, dst, bandwidth, max_delay)`,
 * kontrolowana losowość (seed),
-* symulacja różnych poziomów obciążenia.
-
-###  Algorytmy
-
-* `IPRouting` – Dijkstra po `delay`,
-* `CSPF` – filtr pasma + Dijkstra po `delay` + walidacja `max_delay`,
-* `WeightedGreedy` – filtr pasma + Dijkstra po:
-
-  ```
-  weight = delay * (1 + beta * utilization)
-  ```
-
-  * walidacja `max_delay`.
+* różne poziomy obciążenia.
 
 ---
 
-##  Metodologia eksperymentu
+## Algorytmy
 
-* ta sama topologia i ten sam zestaw flow dla wszystkich algorytmów,
-* izolacja stanu poprzez `deepcopy`,
-* wielokrotne uruchomienia (Monte Carlo),
-* poziomy obciążenia: `30 / 60 / 90` flow,
-* agregacja wyników:
+### IP Routing
 
-  * średnia (mean),
-  * odchylenie standardowe (std).
+* Dijkstra po `delay`,
+* brak uwzględnienia obciążenia.
+
+### CSPF
+
+* filtracja krawędzi niespełniających ograniczeń pasma,
+* Dijkstra po `delay`,
+* walidacja ograniczenia `max_delay`.
+
+### Weighted Routing
+
+Dynamiczna funkcja kosztu:
+weight = delay * (1 + beta * utilization)
+
+gdzie:
+
+* utilization = load / bandwidth
+* beta – parametr wpływu obciążenia
+
+Cechy:
+
+* omija przeciążone łącza,
+* lepiej rozkłada ruch.
 
 ---
 
-##  Metryki
+## Metodologia eksperymentu
+
+* jedna topologia na uruchomienie,
+* te same przepływy dla wszystkich algorytmów,
+* izolacja stanu (`deepcopy`),
+* wielokrotne próby (Monte Carlo),
+* poziomy obciążenia: 30 / 60 / 90 przepływów.
+
+---
+
+## Metryki
 
 * **Acceptance ratio** – odsetek zaakceptowanych przepływów,
-* **Average delay** – średnie opóźnienie zaakceptowanych flow,
+* **Average delay** – średnie opóźnienie,
 * **Link utilization**:
 
-  * średnie wykorzystanie,
-  * maksymalne wykorzystanie (bottleneck).
+  * średnie,
+  * maksymalne (bottleneck),
+* **Rejected flows** – liczba odrzuconych przepływów.
 
 ---
 
-##  Wizualizacja wyników
+## Przykładowe wyniki
 
-Projekt umożliwia generowanie:
+| Flows | IP   | CSPF | Weighted |
+| ----- | ---- | ---- | -------- |
+| 30    | 1.00 | 0.98 | 0.98     |
+| 60    | 0.95 | 0.96 | 0.95     |
+| 90    | 0.90 | 0.96 | 0.95     |
 
-* wykresów średnich wartości,
-* wykresów z odchyleniem standardowym (error bars),
-* wykresów pudełkowych (boxplot).
+---
+
+## Wizualizacja
+
+Projekt generuje:
+
+* topologie sieci,
+* heatmapy obciążenia,
+* wykresy (średnie, boxplot, porównania).
 
 Wyniki zapisywane są w katalogu:
-
-```
 plots/run_<timestamp>/
-```
 
 ---
 
-## ▶ Szybki start
+## Reproducibility
 
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+Eksperymenty są powtarzalne dzięki użyciu seedów.
 
-python main.py
-python plot_results.py
-python plot_results_scientific.py
-```
+Każde uruchomienie:
+
+* generuje jedną topologię bazową,
+* wykonuje wiele prób,
+* zapisuje wyniki w katalogu run_<timestamp>.
 
 ---
 
-##  Struktura projektu
+## Struktura projektu
 
-```
 mpls_qos/
 ├── main.py
 ├── network.py
 ├── routing.py
 ├── plot_results.py
 ├── plot_results_scientific.py
-├── results_summary.csv
-├── runs_details.csv
-├── plots/
+├── plots/        # wyniki eksperymentów (generowane)
+├── logs/         # logi (generowane)
 ├── tests/
 └── docs/
-```
 
 ---
 
-##  Wnioski (skrót)
+## Uruchomienie
 
-* CSPF i Weighted osiągają wyższy współczynnik akceptacji niż IP,
-* Weighted lepiej rozkłada obciążenie (mniej przeciążeń),
-* IP zapewnia niższe opóźnienia kosztem efektywności,
-* występuje kompromis: **QoS vs wydajność sieci**.
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+pip install -r requirements.txt
+
+python main.py
+python plot_results.py
+python plot_results_scientific.py
 
 ---
 
-##  Technologie
+## Wnioski
+
+* CSPF i Weighted osiągają wyższy acceptance niż IP,
+* Weighted lepiej rozkłada obciążenie sieci,
+* IP minimalizuje opóźnienie kosztem przeciążeń,
+* występuje kompromis QoS vs efektywność.
+
+---
+
+## Future Work
+
+* dynamiczny ruch w czasie,
+* RSVP-TE / Segment Routing,
+* analiza stabilności algorytmów,
+* inne modele topologii.
+
+---
+
+## Technologie
 
 * Python 3
 * NetworkX
@@ -133,6 +186,6 @@ mpls_qos/
 
 ---
 
-##  Autor
+## Autor
 
 Projekt realizowany w ramach pracy magisterskiej – MPLS QoS / Traffic Engineering.
