@@ -5,6 +5,7 @@ import copy
 import time
 import os
 import csv
+import pandas as pd
 
 
 def generate_flows(n_flows, n_nodes, rng=None):
@@ -24,6 +25,39 @@ def generate_flows(n_flows, n_nodes, rng=None):
         flows.append(Flow(src, dst, bandwidth, max_delay))
 
     return flows
+
+
+def save_heatmap(graph, filename, title):
+    import matplotlib.pyplot as plt
+    import networkx as nx
+
+    G = graph
+    pos = nx.spring_layout(G, seed=42)
+
+    edge_colors = [
+        data["load"] / data["bandwidth"]
+        for _, _, data in G.edges(data=True)
+    ]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    nx.draw(
+        G,
+        pos,
+        with_labels=True,
+        edge_color=edge_colors,
+        edge_cmap=plt.cm.Reds,
+        ax=ax
+    )
+
+    sm = plt.cm.ScalarMappable(cmap=plt.cm.Reds)
+    sm.set_array(edge_colors)
+
+    fig.colorbar(sm, ax=ax, label="Wykorzystanie łącza")
+    plt.title(title)
+
+    plt.savefig(filename)
+    plt.close()
 
 
 def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
@@ -50,14 +84,11 @@ def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
 
     for i, flow in enumerate(flows):
 
-        # ===== IP =====
+        # IP
         path = ip_router.shortest_path(flow.src, flow.dst)
         log_line = f"FLOW {i} IP: "
 
-        if path:
-            log_line += " -> ".join(map(str, path))
-        else:
-            log_line += "NONE"
+        log_line += " -> ".join(map(str, path)) if path else "NONE"
 
         if path and net_ip.reserve_bandwidth(path, flow.bandwidth):
             accepted_ip += 1
@@ -69,14 +100,11 @@ def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
             with open(current_log_file, "a") as f:
                 f.write(log_line + "\n")
 
-        # ===== CSPF =====
+        # CSPF
         path = cspf_router.compute_path(flow)
         log_line = f"FLOW {i} CSPF: "
 
-        if path:
-            log_line += " -> ".join(map(str, path))
-        else:
-            log_line += "NONE"
+        log_line += " -> ".join(map(str, path)) if path else "NONE"
 
         if path and net_cspf.reserve_bandwidth(path, flow.bandwidth):
             accepted_cspf += 1
@@ -88,14 +116,11 @@ def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
             with open(current_log_file, "a") as f:
                 f.write(log_line + "\n")
 
-        # ===== WEIGHTED =====
+        # WEIGHTED
         path = weighted_router.compute_path(flow)
         log_line = f"FLOW {i} WEIGHTED: "
 
-        if path:
-            log_line += " -> ".join(map(str, path))
-        else:
-            log_line += "NONE"
+        log_line += " -> ".join(map(str, path)) if path else "NONE"
 
         if path and net_weighted.reserve_bandwidth(path, flow.bandwidth):
             accepted_weighted += 1
@@ -107,38 +132,25 @@ def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
             with open(current_log_file, "a") as f:
                 f.write(log_line + "\n")
 
-    # ===== WIZUALIZACJA =====
+    # wizualizacja
     if topo_prefix:
         net_ip.save_topology(f"{topo_prefix}_ip.png")
         net_cspf.save_topology(f"{topo_prefix}_cspf.png")
         net_weighted.save_topology(f"{topo_prefix}_weighted.png")
 
-        import matplotlib.pyplot as plt
-        import networkx as nx
-
-        G = net_weighted.graph
-        pos = nx.spring_layout(G, seed=42)
-
-        edge_colors = [
-            data["load"] / data["bandwidth"]
-            for _, _, data in G.edges(data=True)
-        ]
-
-        fig, ax = plt.subplots(figsize=(8, 6))
-        nx.draw(G, pos, with_labels=True, edge_color=edge_colors,
-                edge_cmap=plt.cm.Reds, ax=ax)
-
-        sm = plt.cm.ScalarMappable(cmap=plt.cm.Reds)
-        sm.set_array(edge_colors)
-        fig.colorbar(sm, ax=ax)
-
-        plt.savefig(f"{topo_prefix}_heatmap.png")
-        plt.close()
+        save_heatmap(net_ip.graph, f"{topo_prefix}_ip_heatmap.png", "IP")
+        save_heatmap(net_cspf.graph, f"{topo_prefix}_cspf_heatmap.png", "CSPF")
+        save_heatmap(net_weighted.graph, f"{topo_prefix}_weighted_heatmap.png", "WEIGHTED")
 
     return {
         "ip_acceptance": accepted_ip / n_flows,
         "cspf_acceptance": accepted_cspf / n_flows,
         "weighted_acceptance": accepted_weighted / n_flows,
+
+        "ip_rejected": n_flows - accepted_ip,
+        "cspf_rejected": n_flows - accepted_cspf,
+        "weighted_rejected": n_flows - accepted_weighted
+
     }
 
 
@@ -146,11 +158,11 @@ def run_scaling_experiments():
 
     print("\n=== OPIS EKSPERYMENTU ===")
     print("IP        - najkrótsza ścieżka (ignoruje obciążenie)")
-    print("CSPF      - uwzględnia ograniczenia (pasmo, delay)")
-    print("Weighted  - uwzględnia obciążenie (load balancing)")
+    print("CSPF      - uwzględnia ograniczenia (pasmo, opóźnienie)")
+    print("Weighted  - uwzględnia obciążenie sieci")
     print("Acceptance = procent zaakceptowanych przepływów\n")
 
-    base_dir = f"run_{int(time.time())}"
+    base_dir = os.path.join("plots", f"run_{int(time.time())}")
     plots_dir = os.path.join(base_dir, "plots")
     logs_dir = os.path.join(base_dir, "logs")
 
@@ -186,10 +198,10 @@ def run_scaling_experiments():
                 current_log_file=log_file
             )
 
-            print(f"[{n_flows} flows | run {run_idx}] "
-                  f"IP={result['ip_acceptance']:.2f} (najkrótsza) | "
-                  f"CSPF={result['cspf_acceptance']:.2f} (ograniczenia) | "
-                  f"W={result['weighted_acceptance']:.2f} (obciążenie)")
+            print(f"[{n_flows} przepływów | próba {run_idx}] "
+                  f"IP={result['ip_acceptance']:.2f} | "
+                  f"CSPF={result['cspf_acceptance']:.2f} | "
+                  f"W={result['weighted_acceptance']:.2f}")
 
             sum_ip.append(result["ip_acceptance"])
             sum_cspf.append(result["cspf_acceptance"])
@@ -198,30 +210,53 @@ def run_scaling_experiments():
             results.append({
                 "n_flows": n_flows,
                 "run": run_idx,
-                **result
+                "ip_acceptance": result["ip_acceptance"],
+                "cspf_acceptance": result["cspf_acceptance"],
+                "weighted_acceptance": result["weighted_acceptance"],
+
+                "ip_rejected": result["ip_rejected"],
+                "cspf_rejected": result["cspf_rejected"],
+                "weighted_rejected": result["weighted_rejected"]
+
             })
 
-        print(f"\n=== PODSUMOWANIE dla {n_flows} flow ===")
+        print(f"\n=== PODSUMOWANIE dla {n_flows} przepływów ===")
         print(f"IP średnio: {sum(sum_ip)/len(sum_ip):.2f}")
         print(f"CSPF średnio: {sum(sum_cspf)/len(sum_cspf):.2f}")
-        print(f"Weighted średnio: {sum(sum_w)/len(sum_w):.2f}\n")
+        print(f"Weighted średnio: {sum(sum_w)/len(sum_w):.2f}")
+
         avg_w = sum(sum_w) / len(sum_w)
 
-    if avg_w > 0.9:
-        print("Wniosek: Sieć jest lekko obciążona – większość przepływów jest obsługiwana.")
-    elif avg_w > 0.5:
-        print("Wniosek: Sieć jest umiarkowanie obciążona – część przepływów jest odrzucana.")
-    else:
-        print("Wniosek: Sieć jest przeciążona – duża liczba odrzuconych przepływów.")
+        if avg_w > 0.9:
+            print("Wniosek: Sieć jest lekko obciążona")
+        elif avg_w > 0.5:
+            print("Wniosek: Sieć jest umiarkowanie obciążona")
+        else:
+            print("Wniosek: Sieć jest przeciążona")
 
-    print("-" * 50)
+        print("-" * 50)
 
-    csv_path = os.path.join(base_dir, "results.csv")
+    csv_path = os.path.join(base_dir, "results_details.csv")
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=results[0].keys())
         writer.writeheader()
         writer.writerows(results)
+    df = pd.DataFrame(results)
+
+    summary = df.groupby("n_flows").mean(numeric_only=True)
+    summary_path = os.path.join(base_dir, "results_summary.csv")
+    summary.to_csv(summary_path)
+    print(f"\nPodsumowanie zapisane do: {summary_path}")
+
+    means = {
+        "IP":summary["ip_acceptance"].mean(),
+        "CSPF":summary["cspf_acceptance"].mean(),
+        "Weighted":summary["weighted_acceptance"].mean()
+
+    }
+    best = max(means, key=means.get)
+    print(f"\nNajlepszy algorytm: {best}")
 
 
 if __name__ == "__main__":

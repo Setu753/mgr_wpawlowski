@@ -77,7 +77,7 @@ class Network:
             "max": max(utils) if utils else 0,
         }
 
-    # 🔥 DODAJ TO (jeśli jeszcze nie masz)
+    
     def save_topology(self, filename="topology.png"):
         import matplotlib.pyplot as plt
 
