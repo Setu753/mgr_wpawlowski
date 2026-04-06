@@ -132,7 +132,7 @@ Każde uruchomienie:
 ---
 
 ## Struktura projektu
-
+```
 mpls_qos/
 ├── main.py
 ├── network.py
@@ -143,7 +143,7 @@ mpls_qos/
 ├── logs/         # logi (generowane)
 ├── tests/
 └── docs/
-
+```
 ---
 
 ## Uruchomienie
