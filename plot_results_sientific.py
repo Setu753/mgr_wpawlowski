@@ -1,8 +1,8 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import time
 
+plt.style.use("seaborn-v0_8")
 
 plt.rcParams.update({
     "font.size": 11,
@@ -11,132 +11,217 @@ plt.rcParams.update({
 })
 
 
-output_dir = os.path.join("plots", f"run_{int(time.time())}")
+def find_latest_run():
+    base = "plots"
+
+    if not os.path.exists(base):
+        print("Brak folderu plots/")
+        exit()
+
+    runs = [d for d in os.listdir(base) if d.startswith("run_")]
+
+    if not runs:
+        print("Brak folderów run_*")
+        exit()
+
+    runs.sort(reverse=True)
+    return os.path.join(base, runs[0])
+
+
+# === ŚCIEŻKI ===
+run_dir = find_latest_run()
+
+# 🔴 FIX: poprawna nazwa pliku
+csv_path = os.path.join(run_dir, "results_details.csv")
+
+output_dir = os.path.join(run_dir, "plots_final")
+
+if not os.path.exists(csv_path):
+    print("Brak pliku:", csv_path)
+    exit()
+
 os.makedirs(output_dir, exist_ok=True)
 
+# === DANE ===
+df_runs = pd.read_csv(csv_path)
 
-df_runs = pd.read_csv("runs_details.csv")
-
-print("\n=== PODGLĄD DANYCH (runs) ===")
+print("\n=== PODGLĄD DANYCH ===")
 print(df_runs.head())
 
-
+# === AGREGACJA ===
 grouped = df_runs.groupby("n_flows")
 
 agg = grouped.agg({
+    # acceptance
     "ip_acceptance": ["mean", "std"],
     "cspf_acceptance": ["mean", "std"],
     "weighted_acceptance": ["mean", "std"],
 
+    # delay
     "ip_avg_delay": ["mean", "std"],
     "cspf_avg_delay": ["mean", "std"],
     "weighted_avg_delay": ["mean", "std"],
 
+    # utilization
     "ip_max_util": ["mean", "std"],
     "cspf_max_util": ["mean", "std"],
     "weighted_max_util": ["mean", "std"],
-})
 
+    "ip_avg_util": ["mean", "std"],
+    "cspf_avg_util": ["mean", "std"],
+    "weighted_avg_util": ["mean", "std"],
+
+    # blocking
+    "ip_blocking": ["mean", "std"],
+    "cspf_blocking": ["mean", "std"],
+    "weighted_blocking": ["mean", "std"],
+})
 
 agg.columns = ["_".join(col) for col in agg.columns]
 agg = agg.reset_index()
 
-print("\n=== AGREGACJA (mean + std) ===")
+print("\n=== AGREGACJA ===")
 print(agg.round(3))
 
+agg.to_csv(os.path.join(output_dir, "aggregated_results.csv"), index=False)
 
 
-# 1. ACCEPTANCE — ERROR BARS
-
+# ===============================
+# 1. ACCEPTANCE
+# ===============================
 plt.figure()
 
-plt.errorbar(agg["n_flows"], agg["ip_acceptance_mean"],
-             yerr=agg["ip_acceptance_std"], marker="o", capsize=4, label="IP")
-
-plt.errorbar(agg["n_flows"], agg["cspf_acceptance_mean"],
-             yerr=agg["cspf_acceptance_std"], marker="s", capsize=4, label="CSPF")
-
-plt.errorbar(agg["n_flows"], agg["weighted_acceptance_mean"],
-             yerr=agg["weighted_acceptance_std"], marker="^", capsize=4, label="Weighted")
+for algo in ["ip", "cspf", "weighted"]:
+    plt.errorbar(
+        agg["n_flows"],
+        agg[f"{algo}_acceptance_mean"],
+        yerr=agg[f"{algo}_acceptance_std"],
+        marker="o",
+        capsize=4,
+        label=algo.upper()
+    )
 
 plt.xlabel("Liczba przepływów")
 plt.ylabel("Współczynnik akceptacji")
 plt.title("Akceptacja (średnia ± odchylenie standardowe)")
 plt.legend(title="Algorytm")
 plt.tight_layout()
-
-plt.savefig(os.path.join(output_dir, "acceptance_errorbars.png"), dpi=300)
-plt.show()
-
+plt.savefig(os.path.join(output_dir, "acceptance.png"), dpi=300)
+plt.close()
 
 
-#  2. MAX UTIL — ERROR BARS
-
+# ===============================
+# 2. MAX UTILIZATION
+# ===============================
 plt.figure()
 
-plt.errorbar(agg["n_flows"], agg["ip_max_util_mean"],
-             yerr=agg["ip_max_util_std"], marker="o", capsize=4, label="IP")
-
-plt.errorbar(agg["n_flows"], agg["cspf_max_util_mean"],
-             yerr=agg["cspf_max_util_std"], marker="s", capsize=4, label="CSPF")
-
-plt.errorbar(agg["n_flows"], agg["weighted_max_util_mean"],
-             yerr=agg["weighted_max_util_std"], marker="^", capsize=4, label="Weighted")
+for algo in ["ip", "cspf", "weighted"]:
+    plt.errorbar(
+        agg["n_flows"],
+        agg[f"{algo}_max_util_mean"],
+        yerr=agg[f"{algo}_max_util_std"],
+        marker="o",
+        capsize=4,
+        label=algo.upper()
+    )
 
 plt.xlabel("Liczba przepływów")
-plt.ylabel("Maksymalne wykorzystanie łącza")
-plt.title("Maksymalne wykorzystanie (średnia ± odchylenie)")
-plt.legend(title="Algorytm")
+plt.ylabel("Max wykorzystanie łącza")
+plt.title("Bottleneck links")
+plt.legend()
 plt.tight_layout()
-
-plt.savefig(os.path.join(output_dir, "max_util_errorbars.png"), dpi=300)
-plt.show()
-
+plt.savefig(os.path.join(output_dir, "max_util.png"), dpi=300)
+plt.close()
 
 
-#  3. DELAY — ERROR BARS
-
+# ===============================
+# 3. DELAY
+# ===============================
 plt.figure()
 
-plt.errorbar(agg["n_flows"], agg["ip_avg_delay_mean"],
-             yerr=agg["ip_avg_delay_std"], marker="o", capsize=4, label="IP")
-
-plt.errorbar(agg["n_flows"], agg["cspf_avg_delay_mean"],
-             yerr=agg["cspf_avg_delay_std"], marker="s", capsize=4, label="CSPF")
-
-plt.errorbar(agg["n_flows"], agg["weighted_avg_delay_mean"],
-             yerr=agg["weighted_avg_delay_std"], marker="^", capsize=4, label="Weighted")
+for algo in ["ip", "cspf", "weighted"]:
+    plt.errorbar(
+        agg["n_flows"],
+        agg[f"{algo}_avg_delay_mean"],
+        yerr=agg[f"{algo}_avg_delay_std"],
+        marker="o",
+        capsize=4,
+        label=algo.upper()
+    )
 
 plt.xlabel("Liczba przepływów")
 plt.ylabel("Średnie opóźnienie")
-plt.title("Opóźnienie (średnia ± odchylenie)")
-plt.legend(title="Algorytm")
+plt.title("Opóźnienie end-to-end")
+plt.legend()
 plt.tight_layout()
-
-plt.savefig(os.path.join(output_dir, "delay_errorbars.png"), dpi=300)
-plt.show()
-
+plt.savefig(os.path.join(output_dir, "delay.png"), dpi=300)
+plt.close()
 
 
-# 📦 4. BOXPLOT — ACCEPTANCE (rozkład)
-
+# ===============================
+# 4. BLOCKING PROBABILITY
+# ===============================
 plt.figure()
 
-data_ip = [group["ip_acceptance"].values for _, group in grouped]
-data_cspf = [group["cspf_acceptance"].values for _, group in grouped]
-data_weighted = [group["weighted_acceptance"].values for _, group in grouped]
-
-positions = list(agg["n_flows"])
-offset = 2
-
-plt.boxplot(data_ip, positions=[p - offset for p in positions], widths=3)
-plt.boxplot(data_cspf, positions=positions, widths=3)
-plt.boxplot(data_weighted, positions=[p + offset for p in positions], widths=3)
+for algo in ["ip", "cspf", "weighted"]:
+    plt.errorbar(
+        agg["n_flows"],
+        agg[f"{algo}_blocking_mean"],
+        yerr=agg[f"{algo}_blocking_std"],
+        marker="o",
+        capsize=4,
+        label=algo.upper()
+    )
 
 plt.xlabel("Liczba przepływów")
-plt.ylabel("Współczynnik akceptacji")
-plt.title("Rozkład akceptacji (boxplot)")
+plt.ylabel("Blocking probability")
+plt.title("Prawdopodobieństwo blokady")
+plt.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "blocking.png"), dpi=300)
+plt.close()
+
+
+# ===============================
+# 5. AVG UTILIZATION
+# ===============================
+plt.figure()
+
+for algo in ["ip", "cspf", "weighted"]:
+    plt.plot(
+        agg["n_flows"],
+        agg[f"{algo}_avg_util_mean"],
+        marker="o",
+        label=algo.upper()
+    )
+
+plt.xlabel("Liczba przepływów")
+plt.ylabel("Średnie wykorzystanie")
+plt.title("Obciążenie sieci")
+plt.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "avg_util.png"), dpi=300)
+plt.close()
+
+
+# ===============================
+# 6. BOXPLOT (FIX)
+# ===============================
+plt.figure()
+
+df_runs.boxplot(
+    column=["ip_acceptance", "cspf_acceptance", "weighted_acceptance"],
+    by="n_flows"
+)
+
+plt.suptitle("")
+plt.title("Rozkład akceptacji")
+plt.xlabel("Liczba przepływów")
+plt.ylabel("Acceptance")
 plt.tight_layout()
 
-plt.savefig(os.path.join(output_dir, "acceptance_boxplot.png"), dpi=300)
-plt.show()
+plt.savefig(os.path.join(output_dir, "boxplot.png"), dpi=300)
+plt.close()
+
+
+print("\nWykresy zapisane w:", output_dir)
