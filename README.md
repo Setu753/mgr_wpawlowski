@@ -1,174 +1,211 @@
 # Protokoły wyznaczania ścieżek MPLS z gwarancją QoS
 
-## TL;DR
+## Opis projektu
 
-Symulator MPLS Traffic Engineering porównujący algorytmy routingu
-(IP, CSPF, Weighted) pod kątem QoS.
+Projekt stanowi środowisko symulacyjne przygotowane na potrzeby pracy magisterskiej poświęconej analizie metod wyznaczania ścieżek w sieciach MPLS z uwzględnieniem wymagań jakości usług (`QoS`).
 
-Wynik: algorytmy uwzględniające ograniczenia i obciążenie osiągają
-wyższy współczynnik akceptacji oraz lepsze rozłożenie ruchu w sieci.
+Głównym celem projektu jest porównanie skuteczności wybranych algorytmów routingu w warunkach narastającego obciążenia sieci. Analiza koncentruje się na wpływie mechanizmu wyznaczania trasy na:
 
----
+* współczynnik akceptacji przepływów
+* poziom blokady ruchu
+* wykorzystanie zasobów sieciowych
+* opóźnienia transmisji
 
-## Cel
+W badaniu uwzględniono trzy podejścia:
 
-Celem projektu jest analiza wpływu różnych algorytmów routingu na:
-
-* współczynnik akceptacji przepływów (acceptance ratio),
-* obciążenie sieci,
-* efektywność wykorzystania zasobów,
-* opóźnienia transmisji.
-
-Porównywane podejścia:
-
-* **IP routing** – najkrótsza ścieżka według opóźnienia (baseline),
-* **CSPF (Constraint Shortest Path First)** – uwzględnia ograniczenia pasma i opóźnienia,
-* **Weighted Delay-First TE** – dynamiczna funkcja kosztu zależna od obciążenia łącza.
+* `IP routing` - klasyczne wyznaczanie najkrótszej ścieżki według opóźnienia
+* `CSPF (Constraint Shortest Path First)` - wyznaczanie ścieżki z uwzględnieniem ograniczeń przepustowości oraz dopuszczalnego opóźnienia
+* `Weighted Delay-First TE` - routing z dynamiczną funkcją kosztu zależną od opóźnienia i aktualnego obciążenia łączy
 
 ---
 
-## Model
+## Model symulacyjny
 
-### Sieć
+### Model sieci
 
-* losowa topologia (`NetworkX`),
-* atrybuty łączy: `bandwidth`, `delay`, `load`,
-* rezerwacja pasma na ścieżce,
-* wymuszenie spójności grafu.
+Sieć reprezentowana jest w postaci nieskierowanego grafu `NetworkX`. W takim modelu:
 
-### Ruch
+* wierzchołki odpowiadają routerom
+* krawędzie odpowiadają łączom transmisyjnym
+* każde łącze opisane jest przez zestaw parametrów:
+* `bandwidth` - dostępna przepustowość
+* `delay` - opóźnienie transmisji na łączu
+* `load` - aktualnie zarezerwowane pasmo
 
-* przepływy: `(src, dst, bandwidth, max_delay)`,
-* kontrolowana losowość (seed),
-* różne poziomy obciążenia.
+Topologia jest generowana losowo z wymuszeniem spójności grafu, tak aby każda para węzłów mogła potencjalnie zostać połączona ścieżką routingu.
 
----
+### Model ruchu
 
-## Algorytmy
+Ruch modelowany jest jako zbiór niezależnych przepływów opisanych czteroelementową krotką:
 
-### IP Routing
-
-* Dijkstra po `delay`,
-* brak uwzględnienia obciążenia.
-
-### CSPF
-
-* filtracja krawędzi niespełniających ograniczeń pasma,
-* Dijkstra po `delay`,
-* walidacja ograniczenia `max_delay`.
-
-### Weighted Routing
-
-Dynamiczna funkcja kosztu:
-weight = delay * (1 + beta * utilization)
+`(src, dst, bandwidth, max_delay)`
 
 gdzie:
 
-* utilization = load / bandwidth
-* beta – parametr wpływu obciążenia
+* `src` oznacza węzeł źródłowy
+* `dst` oznacza węzeł docelowy
+* `bandwidth` określa wymaganą przepustowość
+* `max_delay` oznacza maksymalne dopuszczalne opóźnienie
 
-Cechy:
+Przepływy są generowane losowo dla każdej próby eksperymentalnej.
 
-* omija przeciążone łącza,
-* lepiej rozkłada ruch.
+---
+
+## Charakterystyka algorytmów
+
+### IP Routing
+
+Algorytm bazowy wykorzystuje metodę Dijkstry z wagą równą opóźnieniu łącza. Podejście to nie uwzględnia obciążenia sieci ani dostępnego pasma na etapie wyznaczania ścieżki, dlatego pełni funkcję punktu odniesienia dla metod świadomych ograniczeń QoS.
+
+### CSPF
+
+Algorytm `CSPF` usuwa z grafu łącza niespełniające wymagań przepustowości danego przepływu, a następnie wyznacza najkrótszą ścieżkę według opóźnienia. Po wyznaczeniu trasy wykonywana jest dodatkowa weryfikacja ograniczenia `max_delay`.
+
+### Weighted Delay-First TE
+
+Algorytm `Weighted` wykorzystuje dynamiczną funkcję kosztu:
+
+`weight = delay * (1 + beta * utilization)`
+
+gdzie:
+
+* `utilization = load / bandwidth`
+* `beta` jest współczynnikiem określającym wpływ obciążenia na koszt ścieżki
+
+Tak zdefiniowana funkcja preferuje ścieżki omijające silnie obciążone łącza, co sprzyja bardziej równomiernemu rozkładowi ruchu w sieci.
 
 ---
 
 ## Metodologia eksperymentu
 
-* jedna topologia na uruchomienie,
-* te same przepływy dla wszystkich algorytmów,
-* izolacja stanu (`deepcopy`),
-* wielokrotne próby (Monte Carlo),
-* poziomy obciążenia: 30 / 60 / 90 przepływów.
+Eksperyment został zaprojektowany w taki sposób, aby zapewnić porównywalność wyników między analizowanymi algorytmami.
+
+Najważniejsze założenia metodologiczne są następujące:
+
+* jedno uruchomienie `python main.py` generuje jedną topologię bazową
+* ta sama topologia jest wykorzystywana dla całej serii testów w danym uruchomieniu
+* ponowne uruchomienie programu skutkuje wygenerowaniem nowej topologii
+* w obrębie pojedynczej próby wszystkie algorytmy analizują dokładnie ten sam zestaw przepływów
+* stan sieci dla każdego algorytmu jest izolowany przy użyciu `deepcopy`
+* dla każdego poziomu obciążenia wykonywana jest seria prób Monte Carlo
+
+Badane poziomy obciążenia obejmują:
+
+* `30` przepływów
+* `60` przepływów
+* `90` przepływów
+
+Seed wygenerowanej topologii zapisywany jest w pliku:
+
+`plots/run_<timestamp>/run_metadata.json`
+
+Takie podejście pozwala zachować spójność warunków porównawczych w ramach jednej serii eksperymentów, a jednocześnie umożliwia analizę innych topologii przy kolejnym uruchomieniu programu.
 
 ---
 
-## Metryki
+## Metryki oceny
 
-* **Acceptance ratio** – odsetek zaakceptowanych przepływów,
-* **Average delay** – średnie opóźnienie,
-* **Link utilization**:
+W projekcie analizowane są następujące miary jakości działania algorytmów:
 
-  * średnie,
-  * maksymalne (bottleneck),
-* **Rejected flows** – liczba odrzuconych przepływów.
+* `Acceptance ratio` - odsetek zaakceptowanych przepływów
+* `Blocking probability` - prawdopodobieństwo odrzucenia przepływu
+* `Average delay` - średnie opóźnienie zaakceptowanych przepływów
+* `Average link utilization` - średni poziom wykorzystania łączy
+* `Maximum link utilization` - maksymalne wykorzystanie łącza, interpretowane jako wskaźnik występowania wąskiego gardła
 
----
+Dodatkowo rejestrowane są przyczyny odrzuceń:
 
-## Przykładowe wyniki
+* `bandwidth` - brak wystarczającej przepustowości
+* `delay` - przekroczenie dopuszczalnego opóźnienia
+* `no_path` - brak dostępnej ścieżki
 
-| Flows | IP   | CSPF | Weighted |
-| ----- | ---- | ---- | -------- |
-| 30    | 1.00 | 0.98 | 0.98     |
-| 60    | 0.95 | 0.96 | 0.95     |
-| 90    | 0.90 | 0.96 | 0.95     |
+Rozróżnienie przyczyn odrzucenia pozwala analizować nie tylko skalę zjawiska blokady, ale również jego dominujący mechanizm.
 
 ---
 
-## Wizualizacja
+## Generowane wyniki
 
-Projekt generuje:
+Po uruchomieniu eksperymentu tworzony jest katalog:
 
-* topologie sieci,
-* heatmapy obciążenia,
-* wykresy (średnie, boxplot, porównania).
+`plots/run_<timestamp>/`
 
-Wyniki zapisywane są w katalogu:
-plots/run_<timestamp>/
+W katalogu tym zapisywane są między innymi:
 
----
+* `results_details.csv` - szczegółowe wyniki dla poszczególnych prób
+* `results_summary.csv` - zagregowane wartości średnie
+* `run_metadata.json` - konfiguracja uruchomienia i seed topologii
+* `logs/` - logi przebiegu eksperymentu
+* `plots/` - wizualizacje topologii i heatmapy obciążenia
 
-## Reproducibility
+Po uruchomieniu skryptu:
 
-Eksperymenty są powtarzalne dzięki użyciu seedów.
+`python plot_results_sientific.py`
 
-Każde uruchomienie:
+tworzony jest katalog:
 
-* generuje jedną topologię bazową,
-* wykonuje wiele prób,
-* zapisuje wyniki w katalogu run_<timestamp>.
+`plots/run_<timestamp>/plots_final/`
+
+zawierający:
+
+* wykresy porównawcze najważniejszych metryk
+* wykres struktury odrzuceń `rejection_structure.png`
+* plik `aggregated_results.csv`
+* plik `results_interpretation.txt` z automatycznym podsumowaniem wyników
 
 ---
 
 ## Struktura projektu
-```
+
+```text
 mpls_qos/
-├── main.py
-├── network.py
-├── routing.py
-├── plot_results.py
-├── plot_results_scientific.py
-├── plots/        # wyniki eksperymentów (generowane)
-├── logs/         # logi (generowane)
-├── tests/
-└── docs/
+|-- main.py
+|-- network.py
+|-- routing.py
+|-- plot_results.py
+|-- plot_results_sientific.py
+|-- plots/
+`-- docs/
 ```
+
 ---
 
 ## Uruchomienie
 
+### Instalacja zależności
+
+```bash
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
 pip install -r requirements.txt
+```
 
+### Uruchomienie eksperymentu
+
+```bash
 python main.py
-python plot_results.py
-python plot_results_scientific.py
+```
+
+### Generowanie wykresów i agregacji
+
+```bash
+python plot_results_sientific.py
+```
 
 ---
 
-## Wnioski
+## Główne obserwacje
 
-* CSPF i Weighted osiągają wyższy acceptance niż IP,
-* Weighted lepiej rozkłada obciążenie sieci,
-* IP minimalizuje opóźnienie kosztem przeciążeń,
-* występuje kompromis QoS vs efektywność.
+Dotychczasowe wyniki wskazują na kilka powtarzających się tendencji:
+
+* algorytmy `CSPF` i `Weighted` zwykle osiągają wyższy współczynnik akceptacji niż routing IP
+* algorytm `Weighted` często skuteczniej ogranicza maksymalne wykorzystanie łączy
+* routing IP może osiągać niższe opóźnienia, jednak kosztem większej podatności na przeciążenia
+* wraz ze wzrostem obciążenia rośnie znaczenie mechanizmów uwzględniających ograniczenia QoS oraz stan zasobów sieci
 
 ---
 
 ## Technologie
+
+Projekt wykorzystuje następujące narzędzia i biblioteki:
 
 * Python 3
 * NetworkX
@@ -177,6 +214,3 @@ python plot_results_scientific.py
 
 ---
 
-## Autor
-
-Projekt realizowany w ramach pracy magisterskiej – MPLS QoS / Traffic Engineering.
