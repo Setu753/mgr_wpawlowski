@@ -6,7 +6,7 @@ import random
 import copy
 import time
 import os
-import csv
+import json
 import pandas as pd
 
 
@@ -98,6 +98,48 @@ def compute_path_delay(graph, path):
     return delay
 
 
+def save_run_metadata(base_dir, metadata):
+    metadata_path = os.path.join(base_dir, "run_metadata.json")
+
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+
+
+def init_rejection_stats():
+    return {
+        "bandwidth": 0,
+        "delay": 0,
+        "no_path": 0
+    }
+
+
+def rejection_metrics(prefix, stats, n_flows):
+    return {
+        f"{prefix}_reject_bandwidth": stats["bandwidth"],
+        f"{prefix}_reject_delay": stats["delay"],
+        f"{prefix}_reject_no_path": stats["no_path"],
+        f"{prefix}_reject_bandwidth_ratio": stats["bandwidth"] / n_flows,
+        f"{prefix}_reject_delay_ratio": stats["delay"] / n_flows,
+        f"{prefix}_reject_no_path_ratio": stats["no_path"] / n_flows,
+    }
+
+
+def dominant_rejection_reason(means, prefix):
+    reason_values = {
+        "bandwidth": means[f"{prefix}_reject_bandwidth"],
+        "delay": means[f"{prefix}_reject_delay"],
+        "no_path": means[f"{prefix}_reject_no_path"],
+    }
+
+    dominant_reason = max(reason_values, key=reason_values.get)
+    dominant_value = reason_values[dominant_reason]
+
+    if dominant_value <= 0:
+        return "none"
+
+    return dominant_reason
+
+
 #  WNIOSKI 
 
 def print_summary_insights(df, n_flows):
@@ -117,6 +159,25 @@ def print_summary_insights(df, n_flows):
     print(f"IP        : {means['ip_blocking']:.3f}")
     print(f"CSPF      : {means['cspf_blocking']:.3f}")
     print(f"Weighted  : {means['weighted_blocking']:.3f}")
+
+    print("\nPowody odrzucen:")
+    print(
+        f"IP        : bandwidth={means['ip_reject_bandwidth']:.1f}, "
+        f"delay={means['ip_reject_delay']:.1f}, no_path={means['ip_reject_no_path']:.1f}"
+    )
+    print(
+        f"CSPF      : bandwidth={means['cspf_reject_bandwidth']:.1f}, "
+        f"delay={means['cspf_reject_delay']:.1f}, no_path={means['cspf_reject_no_path']:.1f}"
+    )
+    print(
+        f"Weighted  : bandwidth={means['weighted_reject_bandwidth']:.1f}, "
+        f"delay={means['weighted_reject_delay']:.1f}, no_path={means['weighted_reject_no_path']:.1f}"
+    )
+
+    print("\nDominujacy powod odrzucen:")
+    print(f"IP        : {dominant_rejection_reason(means, 'ip')}")
+    print(f"CSPF      : {dominant_rejection_reason(means, 'cspf')}")
+    print(f"Weighted  : {dominant_rejection_reason(means, 'weighted')}")
 
     print("\nDelay:")
     print(f"IP        : {means['ip_avg_delay']:.2f}")
@@ -182,6 +243,9 @@ def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
     accepted_ip = 0
     accepted_cspf = 0
     accepted_weighted = 0
+    ip_rejections = init_rejection_stats()
+    cspf_rejections = init_rejection_stats()
+    weighted_rejections = init_rejection_stats()
 
     path_lengths_ip, delays_ip = [], []
     path_lengths_cspf, delays_cspf = [], []
@@ -200,14 +264,16 @@ def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
             delays_ip.append(compute_path_delay(net_ip.graph, path))
             log_line += " | ACCEPTED"
         else:
-            log_line += " | REJECTED"
+            reason = "bandwidth" if path else "no_path"
+            ip_rejections[reason] += 1
+            log_line += f" | REJECTED ({reason})"
 
         if current_log_file:
-            with open(current_log_file, "a") as f:
+            with open(current_log_file, "a", encoding="utf-8") as f:
                 f.write(log_line + "\n")
 
         #CSPF
-        path = cspf_router.compute_path(flow)
+        path, reason = cspf_router.compute_path_with_reason(flow)
         log_line = f"FLOW {i} CSPF: "
         log_line += " -> ".join(map(str, path)) if path else "NONE"
 
@@ -217,14 +283,17 @@ def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
             delays_cspf.append(compute_path_delay(net_cspf.graph, path))
             log_line += " | ACCEPTED"
         else:
-            log_line += " | REJECTED"
+            if path and reason == "accepted":
+                reason = "bandwidth"
+            cspf_rejections[reason] += 1
+            log_line += f" | REJECTED ({reason})"
 
         if current_log_file:
-            with open(current_log_file, "a") as f:
+            with open(current_log_file, "a", encoding="utf-8") as f:
                 f.write(log_line + "\n")
 
         #WEIGHTED
-        path = weighted_router.compute_path(flow)
+        path, reason = weighted_router.compute_path_with_reason(flow)
         log_line = f"FLOW {i} WEIGHTED: "
         log_line += " -> ".join(map(str, path)) if path else "NONE"
 
@@ -234,10 +303,13 @@ def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
             delays_w.append(compute_path_delay(net_weighted.graph, path))
             log_line += " | ACCEPTED"
         else:
-            log_line += " | REJECTED"
+            if path and reason == "accepted":
+                reason = "bandwidth"
+            weighted_rejections[reason] += 1
+            log_line += f" | REJECTED ({reason})"
 
         if current_log_file:
-            with open(current_log_file, "a") as f:
+            with open(current_log_file, "a", encoding="utf-8") as f:
                 f.write(log_line + "\n")
 
     ip_metrics = compute_network_metrics(net_ip.graph)
@@ -272,7 +344,11 @@ def run_experiment(base_graph, n_nodes=15, n_flows=30, seed=None, beta=3.0,
 
         "ip_max_util": ip_metrics["max_util"],
         "cspf_max_util": cspf_metrics["max_util"],
-        "weighted_max_util": w_metrics["max_util"]
+        "weighted_max_util": w_metrics["max_util"],
+
+        **rejection_metrics("ip", ip_rejections, n_flows),
+        **rejection_metrics("cspf", cspf_rejections, n_flows),
+        **rejection_metrics("weighted", weighted_rejections, n_flows)
     }
 
 
@@ -282,34 +358,53 @@ def run_scaling_experiments():
     base_dir = os.path.join("plots", f"run_{int(time.time())}")
     plots_dir = os.path.join(base_dir, "plots")
     logs_dir = os.path.join(base_dir, "logs")
+    topology_seed = random.SystemRandom().randint(0, 10**9)
+    topology_rng = random.Random(topology_seed)
+    n_nodes = 15
+    flow_levels = [30, 60, 90]
+    runs_per_level = 10
 
     os.makedirs(base_dir, exist_ok=True)
     os.makedirs(plots_dir, exist_ok=True)
     os.makedirs(logs_dir, exist_ok=True)
 
+    save_run_metadata(base_dir, {
+        "topology_seed": topology_seed,
+        "n_nodes": n_nodes,
+        "flow_levels": flow_levels,
+        "runs_per_level": runs_per_level,
+        "topology_policy": (
+            "One base topology is generated per program run and reused for all "
+            "experiments in that run. A new topology is generated only after the "
+            "program is started again."
+        )
+    })
+
     base_network = Network()
-    base_network.generate_random(nodes=15)
+    base_network.generate_random(nodes=n_nodes, rng=topology_rng)
     base_graph = base_network.get_graph()
 
+    print(f"\nTopology seed for this run: {topology_seed}")
     results = []
 
-    for n_flows in [30, 60, 90]:
+    for n_flows in flow_levels:
 
         log_file = os.path.join(logs_dir, f"log_{n_flows}.txt")
 
-        with open(log_file, "w") as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             f.write(f"=== LOG dla {n_flows} flows ===\n")
+            f.write(f"TOPOLOGY_SEED={topology_seed}\n")
 
-        for run_idx in range(10):
+        for run_idx in range(runs_per_level):
 
-            with open(log_file, "a") as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"\n===== RUN {run_idx} =====\n")
 
             topo_prefix = os.path.join(plots_dir, f"topo_{n_flows}_{run_idx}")
 
             result = run_experiment(
                 base_graph=base_graph,
-                n_nodes=15,
+                n_nodes=n_nodes,
                 n_flows=n_flows,
                 seed=run_idx,
                 topo_prefix=topo_prefix,
