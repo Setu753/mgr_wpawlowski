@@ -15,7 +15,7 @@ W badaniu uwzględniono trzy podejścia:
 
 * `IP routing` - klasyczne wyznaczanie najkrótszej ścieżki według opóźnienia
 * `CSPF (Constraint Shortest Path First)` - wyznaczanie ścieżki z uwzględnieniem ograniczeń przepustowości oraz dopuszczalnego opóźnienia
-* `Weighted Delay-First TE` - routing z dynamiczną funkcją kosztu zależną od opóźnienia i aktualnego obciążenia łączy
+* `Weighted Greedy` - routing z dynamiczną funkcją kosztu zależną od opóźnienia i aktualnego obciążenia łączy
 
 ---
 
@@ -61,7 +61,7 @@ Algorytm bazowy wykorzystuje metodę Dijkstry z wagą równą opóźnieniu łąc
 
 Algorytm `CSPF` usuwa z grafu łącza niespełniające wymagań przepustowości danego przepływu, a następnie wyznacza najkrótszą ścieżkę według opóźnienia. Po wyznaczeniu trasy wykonywana jest dodatkowa weryfikacja ograniczenia `max_delay`.
 
-### Weighted Delay-First TE
+### Weighted Greedy
 
 Algorytm `Weighted` wykorzystuje dynamiczną funkcję kosztu:
 
@@ -196,8 +196,8 @@ python plot_results_sientific.py
 
 Dotychczasowe wyniki wskazują na kilka powtarzających się tendencji:
 
-* algorytmy `CSPF` i `Weighted` zwykle osiągają wyższy współczynnik akceptacji niż routing IP
-* algorytm `Weighted` często skuteczniej ogranicza maksymalne wykorzystanie łączy
+* algorytmy `CSPF` i `Weighted Greedy` zwykle osiągają wyższy współczynnik akceptacji niż routing IP
+* algorytm `Weighted Greedy` często skuteczniej ogranicza maksymalne wykorzystanie łączy
 * routing IP może osiągać niższe opóźnienia, jednak kosztem większej podatności na przeciążenia
 * wraz ze wzrostem obciążenia rośnie znaczenie mechanizmów uwzględniających ograniczenia QoS oraz stan zasobów sieci
 
