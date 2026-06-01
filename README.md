@@ -2,7 +2,7 @@
 
 ## Opis projektu
 
-Projekt stanowi środowisko symulacyjne przygotowane na potrzeby pracy magisterskiej poświęconej analizie metod wyznaczania ścieżek w sieciach MPLS z uwzględnieniem wymagań jakości usług (`QoS`).
+Projekt stanowi środowisko symulacyjne przygotowane na potrzeby pracy magisterskiej poświęconej analizie metod wyznaczania ścieżek w sieciach MPLS z uwzględnieniem wymagań jakości usług (QoS).
 
 Głównym celem projektu jest porównanie skuteczności wybranych algorytmów routingu w warunkach narastającego obciążenia sieci. Analiza koncentruje się na wpływie mechanizmu wyznaczania trasy na:
 
@@ -28,9 +28,9 @@ Sieć reprezentowana jest w postaci nieskierowanego grafu `NetworkX`. W takim mo
 * wierzchołki odpowiadają routerom
 * krawędzie odpowiadają łączom transmisyjnym
 * każde łącze opisane jest przez zestaw parametrów:
-* `bandwidth` - dostępna przepustowość
-* `delay` - opóźnienie transmisji na łączu
-* `load` - aktualnie zarezerwowane pasmo
+  * `bandwidth` - dostępna przepustowość
+  * `delay` - opóźnienie transmisji na łączu
+  * `load` - aktualnie zarezerwowane pasmo
 
 Topologia jest generowana losowo z wymuszeniem spójności grafu, tak aby każda para węzłów mogła potencjalnie zostać połączona ścieżką routingu.
 
@@ -137,11 +137,7 @@ W katalogu tym zapisywane są między innymi:
 * `logs/` - logi przebiegu eksperymentu
 * `plots/` - wizualizacje topologii i heatmapy obciążenia
 
-Po uruchomieniu skryptu:
-
-`python plot_results_sientific.py`
-
-tworzony jest katalog:
+Po uruchomieniu skryptu `python generate_plots.py` tworzony jest katalog:
 
 `plots/run_<timestamp>/plots_final/`
 
@@ -150,33 +146,32 @@ zawierający:
 * wykresy porównawcze najważniejszych metryk
 * wykres struktury odrzuceń `rejection_structure.png`
 * plik `aggregated_results.csv`
-* plik `results_interpretation.txt` z automatycznym podsumowaniem wyników
 
 ---
 
-## Struktura projektu
+## Wymagania
 
-```text
-mpls_qos/
-|-- main.py
-|-- network.py
-|-- routing.py
-|-- plot_results.py
-|-- plot_results_sientific.py
-|-- plots/
-`-- docs/
+**Sprzętowe:** standardowy laptop lub komputer, brak wymagań GPU
+
+**Programowe:**
+* Python 3.14.2
+* Biblioteki: `networkx`, `pandas`, `matplotlib`, `numpy` (zob. `requirements.txt`)
+
+---
+
+## Instalacja i konfiguracja
+
+```bash
+python -m venv .venv
+source .venv/bin/activate      # Linux / macOS
+# .venv\Scripts\activate       # Windows
+
+pip install -r requirements.txt
 ```
 
 ---
 
 ## Uruchomienie
-
-### Instalacja zależności
-
-```bash
-python -m venv .venv
-pip install -r requirements.txt
-```
 
 ### Uruchomienie eksperymentu
 
@@ -184,11 +179,72 @@ pip install -r requirements.txt
 python main.py
 ```
 
+**Orientacyjny czas działania: ~49 sekund** na standardowym laptopie.
+
 ### Generowanie wykresów i agregacji
 
 ```bash
-python plot_results_sientific.py
+python generate_plots.py
 ```
+
+---
+
+## Oczekiwany wynik
+
+Projekt uruchomił się poprawnie, jeśli po `python main.py` katalog `plots/run_<timestamp>/` zawiera pliki `results_details.csv` i `run_metadata.json`, a konsola wypisuje podsumowania dla 30 / 60 / 90 przepływów.
+
+W repozytorium zapisano przykładowe wyniki eksperymentu w katalogu `plots/run_1775554883/`. Aby wygenerować wykresy na podstawie tych danych bez uruchamiania eksperymentu:
+
+```bash
+python generate_plots.py
+```
+
+---
+
+## Struktura projektu
+
+```text
+mpls_qos/
+├── README.md
+├── LICENSE
+├── requirements.txt
+├── main.py
+├── network.py
+├── routing.py
+├── generate_plots.py
+├── demo/
+├── plots/
+│   └── run_1775554883/        # przykładowe wyniki eksperymentu
+└── docs/
+    ├── architecture.md
+    ├── development.md
+    └── (prezentacje i poster)
+```
+
+---
+
+## Testy
+
+Projekt nie zawiera testów automatycznych. Weryfikację poprawności działania można przeprowadzić przez:
+
+* porównanie wygenerowanych metryk z zapisanymi wynikami w `plots/run_1775554883/results_summary.csv`
+
+---
+
+## Dokumentacja
+
+* [`docs/architecture.md`](docs/architecture.md) - architektura rozwiązania, komponenty, przepływ danych
+* [`docs/development.md`](docs/development.md) - dokumentacja konserwacyjna, rozwijanie projektu
+* [`docs/`](docs/) - prezentacje etapów prac magisterskich i poster
+
+---
+
+## Ograniczenia
+
+* Topologia generowana jest losowo — każde uruchomienie daje inne wyniki liczbowe
+* Projekt symuluje środowisko sieciowe, nie obsługuje rzeczywistego ruchu sieciowego
+* Brak testów automatycznych
+* Czas obliczeń ~49 s przy domyślnych parametrach (15 węzłów, 3 poziomy obciążenia, 10 prób)
 
 ---
 
@@ -205,12 +261,18 @@ Dotychczasowe wyniki wskazują na kilka powtarzających się tendencji:
 
 ## Technologie
 
-Projekt wykorzystuje następujące narzędzia i biblioteki:
-
-* Python 3
+* Python 3.14.2
 * NetworkX
 * Pandas
 * Matplotlib
+* NumPy
 
 ---
 
+## Autor
+
+Wojciech Pawłowski — praca magisterska, Uniwersytet im. Adama Mickiewicza w Poznaniu
+
+## Licencja
+
+MIT License — szczegóły w pliku [LICENSE](LICENSE)
